@@ -1,0 +1,54 @@
+# Despliegue Linux: docker compose up -d --build
+# Espera el repositorio del frontend en ../edumaster-frontend (o define FRONTEND_DIR en .env).
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: edumaster
+      POSTGRES_USER: edumaster
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edumaster -d edumaster"]
+      interval: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    environment:
+      EDUMASTER_ENV: production
+      EDUMASTER_DATABASE_URL: postgresql+psycopg://edumaster:${DB_PASSWORD}@db:5432/edumaster
+      EDUMASTER_JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en .env}
+      EDUMASTER_CORS_ORIGINS: '["https://${SITE_ADDRESS:-localhost}"]'
+      EDUMASTER_SEED_DEMO: ${SEED_DEMO:-true}
+    volumes:
+      - models:/data/models
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ${FRONTEND_DIR:-../edumaster-frontend}
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  models:
+  caddy_data:
+  caddy_config:

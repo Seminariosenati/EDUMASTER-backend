@@ -1,0 +1,10 @@
+.env
+__pycache__/
+*.pyc
+*.db
+*.db-*
+.venv/
+.pytest_cache/
+artifacts/
+*.egg-info/
+ml/data/raw/
