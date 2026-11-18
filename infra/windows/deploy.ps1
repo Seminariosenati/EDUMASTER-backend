@@ -30,6 +30,14 @@ Install-IfMissing "node" "https://nodejs.org/dist/v22.12.0/node-v22.12.0-x64.msi
 Install-IfMissing "git" "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe" "Git-2.47.1-64-bit.exe" "/VERYSILENT /NORESTART"
 Refresh-Path
 
+# PyTorch necesita las DLL de Visual C++ (c10.dll falla al cargar sin ellas).
+if (-not (Test-Path "HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64")) {
+  $vc = Join-Path $env:TEMP "vc_redist.x64.exe"
+  Write-Host "Instalando Microsoft Visual C++ Redistributable ..."
+  Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vc_redist.x64.exe" -OutFile $vc -UseBasicParsing
+  Start-Process $vc -ArgumentList "/install /quiet /norestart" -Wait
+}
+
 New-Item -ItemType Directory -Force -Path $Base, "$Base\data\models" | Out-Null
 foreach ($pair in @(@("edumaster-backend", $BackendRepo), @("edumaster-frontend", $FrontendRepo))) {
   $dir = Join-Path $Base $pair[0]
@@ -91,7 +99,7 @@ $settings = New-ScheduledTaskSettingsSet -RestartCount 5 -RestartInterval (New-T
 Register-ScheduledTask -TaskName $task -Action $action -Trigger $trigger -Settings $settings -User "SYSTEM" -RunLevel Highest | Out-Null
 Start-ScheduledTask -TaskName $task
 
-Start-Sleep -Seconds 40
+Start-Sleep -Seconds 120
 try {
   $health = Invoke-RestMethod "http://127.0.0.1:$Port/api/v1/health"
   Write-Host "EduMaster en marcha: $($health.status). Abre http://edumaster-win.northcentralus.cloudapp.azure.com"
