@@ -111,8 +111,10 @@ Invoke-WebRequest https://raw.githubusercontent.com/Seminariosenati/edumaster-ba
 powershell -ExecutionPolicy Bypass -File C:\deploy.ps1
 ```
 
-El script instala Python, Node y Git, compila el frontend y registra la API como tarea al iniciar Windows. La API
-sirve también la web en el puerto 80 y detiene el sitio por defecto de IIS. La base de datos es SQLite en `C:\edumaster\data`.
+El script instala Visual C++ Redistributable, Python, Node y Git, y compila el frontend. Registra dos tareas al
+iniciar Windows: la API en `127.0.0.1:8000`, que sirve también la web, y Caddy en los puertos 80/443 con HTTPS
+automático para `edumaster-win.northcentralus.cloudapp.azure.com`. Detiene el sitio por defecto de IIS. La base de
+datos es SQLite en `C:\edumaster\data`.
 
 ## Endpoints principales (`/api/v1`)
 

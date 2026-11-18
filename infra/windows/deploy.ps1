@@ -1,11 +1,12 @@
-# Despliega EduMaster en Windows Server (2022/2025) sin Docker: Python + Node + Git, API FastAPI que sirve
-# también el frontend compilado en el puerto 80, registrada como tarea al iniciar el sistema.
+# Despliega EduMaster en Windows Server (2022/2025) sin Docker: Python + Node + Git. La API FastAPI sirve el
+# frontend compilado en 127.0.0.1:8000 y Caddy la publica en 80/443 con HTTPS automático (Let's Encrypt).
 # Ejecutar como Administrador (o desde Azure: VM > Ejecutar comando > RunPowerShellScript).
 param(
   [string]$Base = "C:\edumaster",
   [string]$BackendRepo = "https://github.com/Seminariosenati/edumaster-backend.git",
   [string]$FrontendRepo = "https://github.com/Seminariosenati/edumaster-frontend.git",
-  [int]$Port = 80
+  [string]$Domain = "edumaster-win.northcentralus.cloudapp.azure.com",
+  [int]$Port = 8000
 )
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
@@ -74,11 +75,30 @@ if (-not (Test-Path $envFile)) {
 @"
 . '$envFile'
 Set-Location '$api'
-& '$venv\Scripts\uvicorn.exe' app.main:app --host 0.0.0.0 --port $Port *>> '$Base\data\api.log'
+& '$venv\Scripts\uvicorn.exe' app.main:app --host 127.0.0.1 --port $Port *>> '$Base\data\api.log'
 "@ | Set-Content -Path "$Base\run-api.ps1" -Encoding UTF8
 
+# Caddy termina HTTPS en 80/443 y reenvía a la API local.
+New-Item -ItemType Directory -Force -Path "$Base\caddy" | Out-Null
+if (-not (Test-Path "$Base\caddy\caddy.exe")) {
+  Invoke-WebRequest -Uri "https://caddyserver.com/api/download?os=windows&arch=amd64" -OutFile "$Base\caddy\caddy.exe" -UseBasicParsing
+}
+@"
+$Domain {
+	encode gzip
+	reverse_proxy 127.0.0.1:$Port {
+		flush_interval -1
+	}
+}
+"@ | Set-Content -Path "$Base\caddy\Caddyfile" -Encoding ascii
+@"
+`$env:XDG_DATA_HOME = '$Base\caddy\data'
+`$env:XDG_CONFIG_HOME = '$Base\caddy\config'
+& '$Base\caddy\caddy.exe' run --config '$Base\caddy\Caddyfile' *>> '$Base\caddy\caddy.log'
+"@ | Set-Content -Path "$Base\run-caddy.ps1" -Encoding UTF8
+
 # IIS ocupa el puerto 80; se detiene su sitio por defecto (se puede reactivar desde el Administrador de IIS).
-if ($Port -eq 80 -and (Get-Module -ListAvailable -Name WebAdministration)) {
+if (Get-Module -ListAvailable -Name WebAdministration) {
   Import-Module WebAdministration
   if (Get-Website -Name "Default Web Site" -ErrorAction SilentlyContinue) {
     Stop-Website -Name "Default Web Site"
@@ -87,22 +107,23 @@ if ($Port -eq 80 -and (Get-Module -ListAvailable -Name WebAdministration)) {
   }
 }
 
-if (-not (Get-NetFirewallRule -DisplayName "EduMaster HTTP" -ErrorAction SilentlyContinue)) {
-  New-NetFirewallRule -DisplayName "EduMaster HTTP" -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow | Out-Null
+if (-not (Get-NetFirewallRule -DisplayName "EduMaster HTTP/HTTPS" -ErrorAction SilentlyContinue)) {
+  New-NetFirewallRule -DisplayName "EduMaster HTTP/HTTPS" -Direction Inbound -Protocol TCP -LocalPort 80, 443 -Action Allow | Out-Null
 }
 
-$task = "EduMasterAPI"
-Unregister-ScheduledTask -TaskName $task -Confirm:$false -ErrorAction SilentlyContinue
-$action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Base\run-api.ps1`""
-$trigger = New-ScheduledTaskTrigger -AtStartup
 $settings = New-ScheduledTaskSettingsSet -RestartCount 5 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit ([TimeSpan]::Zero)
-Register-ScheduledTask -TaskName $task -Action $action -Trigger $trigger -Settings $settings -User "SYSTEM" -RunLevel Highest | Out-Null
-Start-ScheduledTask -TaskName $task
+foreach ($t in @(@("EduMasterAPI", "run-api.ps1"), @("EduMasterCaddy", "run-caddy.ps1"))) {
+  Stop-ScheduledTask -TaskName $t[0] -ErrorAction SilentlyContinue
+  Unregister-ScheduledTask -TaskName $t[0] -Confirm:$false -ErrorAction SilentlyContinue
+  $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$Base\$($t[1])`""
+  Register-ScheduledTask -TaskName $t[0] -Action $action -Trigger (New-ScheduledTaskTrigger -AtStartup) -Settings $settings -User "SYSTEM" -RunLevel Highest | Out-Null
+  Start-ScheduledTask -TaskName $t[0]
+}
 
 Start-Sleep -Seconds 120
 try {
   $health = Invoke-RestMethod "http://127.0.0.1:$Port/api/v1/health"
-  Write-Host "EduMaster en marcha: $($health.status). Abre http://edumaster-win.northcentralus.cloudapp.azure.com"
+  Write-Host "EduMaster en marcha: $($health.status). Abre https://$Domain (el certificado tarda ~1 min la primera vez)"
 } catch {
   Write-Host "La API aún no responde; revisa $Base\data\api.log"
 }
