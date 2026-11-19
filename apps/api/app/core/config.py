@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     demo_students: int = 240
     auto_train_on_seed: bool = True
     resource_interval_seconds: float = 2.0
+    live_inference_seconds: float = 5.0
 
 
 @lru_cache

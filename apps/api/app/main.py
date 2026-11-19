@@ -19,6 +19,7 @@ from app.db.session import Base, SessionLocal, engine
 from app.modules import (academic, analytics, certificates, governance, identity, ml, realtime, recommendations,
                          tracking)
 from app.services import ml as ml_service
+from app.services.live import live_inference_loop
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("edumaster")
@@ -47,6 +48,8 @@ async def lifespan(app: FastAPI):
     await asyncio.to_thread(_bootstrap)
     tasks = [asyncio.create_task(outbox_dispatcher()),
              asyncio.create_task(resource_publisher(settings.resource_interval_seconds))]
+    if settings.live_inference_seconds > 0:
+        tasks.append(asyncio.create_task(live_inference_loop(settings.live_inference_seconds)))
     yield
     for t in tasks:
         t.cancel()

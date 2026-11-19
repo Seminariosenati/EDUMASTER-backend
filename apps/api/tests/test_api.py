@@ -168,3 +168,14 @@ def test_training_lifecycle_and_predictions(client, tokens):
     if recs:
         fb = client.post(f"{API}/recommendations/{recs[0]['id']}/feedback", headers=admin, json={"useful": True})
         assert fb.status_code == 200 and fb.json()["useful"] is True
+
+
+def test_live_inference_event(client, tokens):
+    from app.services import live
+    me = client.get(f"{API}/auth/me", headers=auth(tokens["admin"])).json()
+    event = live.run_once(me["organization_id"])
+    assert event and event["event_type"] == "model.inference.live"
+    p = event["payload"]
+    assert "estudiante" not in p["audience_roles"]
+    assert 0 <= p["completion_probability"] <= 1 and p["student_code"].startswith("DEMO-")
+    assert {"entrada", "fusion"} <= set(p["activations"])
