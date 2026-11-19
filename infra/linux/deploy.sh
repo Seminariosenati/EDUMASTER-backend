@@ -31,11 +31,15 @@ ENV
   echo "Se creó .env con secretos aleatorios (dominio: ${DOMAIN})"
 fi
 
-# IP pública desde el servicio de metadatos de Azure, para permitir también el acceso por http://<IP>.
+# IP pública para permitir también el acceso por http://<IP>. Los metadatos de Azure no la informan en IPs
+# de SKU Standard, así que se resuelve el propio dominio y, como último recurso, un servicio externo.
 if ! grep -q '^PUBLIC_IP=' .env; then
-  IP=$(curl -s -m 5 -H Metadata:true "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text" || true)
-  if [ -n "$IP" ]; then echo "PUBLIC_IP=$IP" >> .env; echo "Acceso por IP habilitado: http://$IP"; fi
+  SITE=$(grep '^SITE_ADDRESS=' .env | cut -d= -f2)
+  IP=$(getent ahostsv4 "$SITE" 2>/dev/null | awk 'NR==1{print $1}')
+  [ -z "$IP" ] && IP=$(curl -s -m 5 https://api.ipify.org || true)
+  if [ -n "$IP" ]; then echo "PUBLIC_IP=$IP" >> .env; fi
 fi
+grep -q '^PUBLIC_IP=' .env && echo "Acceso por IP habilitado: http://$(grep '^PUBLIC_IP=' .env | cut -d= -f2)"
 
 # El contenedor nginx de prueba ocupa el puerto 80.
 if sudo docker ps -a --format '{{.Names}}' | grep -qx prueba; then

@@ -120,10 +120,13 @@ if (-not (Test-Path "$Base\caddy\caddy.exe")) {
   Invoke-WebRequest -Uri "https://caddyserver.com/api/download?os=windows&arch=amd64" -OutFile "$Base\caddy\caddy.exe" -UseBasicParsing
 }
 # IP pública desde los metadatos de Azure: permite entrar también por http://<IP> (sin HTTPS, no hay certificados para IPs).
+# Los metadatos de Azure no informan la IP en SKU Standard: se resuelve el propio dominio (o un servicio externo).
 $PublicIp = $null
-try {
-  $PublicIp = Invoke-RestMethod -Headers @{ Metadata = "true" } -TimeoutSec 5 -Uri "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text"
-} catch { Write-Host "No se pudo leer la IP pública; solo habrá acceso por el dominio" }
+try { $PublicIp = (Resolve-DnsName -Name $Domain -Type A -ErrorAction Stop | Where-Object { $_.IPAddress } | Select-Object -First 1).IPAddress } catch {}
+if (-not $PublicIp) {
+  try { $PublicIp = (Invoke-RestMethod -TimeoutSec 5 -Uri "https://api.ipify.org").ToString().Trim() } catch {}
+}
+if (-not $PublicIp) { Write-Host "No se pudo obtener la IP pública; solo habrá acceso por el dominio" }
 $ipBlock = ""
 if ($PublicIp) {
   $ipBlock = @"
