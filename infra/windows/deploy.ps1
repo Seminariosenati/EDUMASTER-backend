@@ -16,8 +16,9 @@ function Refresh-Path {
   $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [Environment]::GetEnvironmentVariable("Path", "User")
 }
 
-function Install-IfMissing($command, $url, $file, $installArgs) {
-  if (Get-Command $command -ErrorAction SilentlyContinue) { Write-Host "$command ya instalado"; return }
+function Install-IfMissing($command, $url, $file, $installArgs, $exePath = $null) {
+  if ($exePath -and (Test-Path $exePath)) { Write-Host "$command ya instalado"; return }
+  if (-not $exePath -and (Get-Command $command -ErrorAction SilentlyContinue)) { Write-Host "$command ya instalado"; return }
   $out = Join-Path $env:TEMP $file
   Write-Host "Descargando $file ..."
   Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
@@ -26,7 +27,11 @@ function Install-IfMissing($command, $url, $file, $installArgs) {
   Refresh-Path
 }
 
-Install-IfMissing "python" "https://www.python.org/ftp/python/3.13.1/python-3.13.1-amd64.exe" "python-3.13.1-amd64.exe" "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0"
+# Se detecta por ruta fija: reejecutar el instalador sobre una instalación existente la desinstala.
+$py = "C:\Program Files\Python313\python.exe"
+Refresh-Path
+Install-IfMissing "python" "https://www.python.org/ftp/python/3.13.1/python-3.13.1-amd64.exe" "python-3.13.1-amd64.exe" "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" $py
+if (-not (Test-Path $py)) { throw "Python no quedó instalado en $py" }
 Install-IfMissing "node" "https://nodejs.org/dist/v22.12.0/node-v22.12.0-x64.msi" "node-v22.12.0-x64.msi" ""
 Install-IfMissing "git" "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe" "Git-2.47.1-64-bit.exe" "/VERYSILENT /NORESTART"
 Refresh-Path
@@ -47,7 +52,16 @@ foreach ($pair in @(@("edumaster-backend", $BackendRepo), @("edumaster-frontend"
 
 $api = "$Base\edumaster-backend\apps\api"
 $venv = "$Base\venv"
-if (-not (Test-Path "$venv\Scripts\python.exe")) { python -m venv $venv }
+$venvOk = $false
+if (Test-Path "$venv\Scripts\python.exe") {
+  & "$venv\Scripts\python.exe" -c "import sys" 2>$null
+  $venvOk = $LASTEXITCODE -eq 0
+}
+if (-not $venvOk) {
+  Stop-ScheduledTask -TaskName "EduMasterAPI" -ErrorAction SilentlyContinue
+  if (Test-Path $venv) { Remove-Item -Recurse -Force $venv }
+  & $py -m venv $venv
+}
 & "$venv\Scripts\python.exe" -m pip install --upgrade pip
 & "$venv\Scripts\pip.exe" install torch==2.15.0 --index-url https://download.pytorch.org/whl/cpu
 & "$venv\Scripts\pip.exe" install -r "$api\requirements.txt"
