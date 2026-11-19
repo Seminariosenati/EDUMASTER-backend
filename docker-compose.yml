@@ -38,6 +38,7 @@ services:
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+      PUBLIC_IP: ${PUBLIC_IP:-127.0.0.1}
     ports:
       - "80:80"
       - "443:443"

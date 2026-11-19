@@ -119,6 +119,23 @@ New-Item -ItemType Directory -Force -Path "$Base\caddy" | Out-Null
 if (-not (Test-Path "$Base\caddy\caddy.exe")) {
   Invoke-WebRequest -Uri "https://caddyserver.com/api/download?os=windows&arch=amd64" -OutFile "$Base\caddy\caddy.exe" -UseBasicParsing
 }
+# IP pública desde los metadatos de Azure: permite entrar también por http://<IP> (sin HTTPS, no hay certificados para IPs).
+$PublicIp = $null
+try {
+  $PublicIp = Invoke-RestMethod -Headers @{ Metadata = "true" } -TimeoutSec 5 -Uri "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text"
+} catch { Write-Host "No se pudo leer la IP pública; solo habrá acceso por el dominio" }
+$ipBlock = ""
+if ($PublicIp) {
+  $ipBlock = @"
+
+http://$PublicIp {
+	encode gzip
+	reverse_proxy 127.0.0.1:$Port {
+		flush_interval -1
+	}
+}
+"@
+}
 @"
 $Domain {
 	encode gzip
@@ -126,6 +143,7 @@ $Domain {
 		flush_interval -1
 	}
 }
+$ipBlock
 "@ | Set-Content -Path "$Base\caddy\Caddyfile" -Encoding ascii
 @"
 `$env:XDG_DATA_HOME = '$Base\caddy\data'
@@ -160,6 +178,7 @@ Start-Sleep -Seconds 120
 try {
   $health = Invoke-RestMethod "http://127.0.0.1:$Port/api/v1/health"
   Write-Host "EduMaster en marcha: $($health.status). Abre https://$Domain (el certificado tarda ~1 min la primera vez)"
+  if ($PublicIp) { Write-Host "También por IP: http://$PublicIp" }
 } catch {
   Write-Host "La API aún no responde; revisa $Base\data\api.log"
 }

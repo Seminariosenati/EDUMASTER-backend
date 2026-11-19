@@ -98,7 +98,9 @@ git clone https://github.com/Seminariosenati/edumaster-backend.git
 bash edumaster-backend/infra/linux/deploy.sh
 ```
 
-El script clona los dos repos en `/opt/edumaster` y genera `.env` con secretos aleatorios. Luego levanta
+El script clona los dos repos en `/opt/edumaster` y genera `.env` con secretos aleatorios y la IP pública de la VM
+(se puede entrar por `https://<dominio>` o por `http://<IP>`; por IP no hay HTTPS porque Let's Encrypt no emite
+certificados para direcciones IP). Luego levanta
 `db + api + web` con Docker Compose. Con `SITE_ADDRESS` igual al DNS de Azure, Caddy obtiene el certificado HTTPS
 automáticamente.
 

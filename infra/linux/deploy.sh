@@ -31,6 +31,12 @@ ENV
   echo "Se creó .env con secretos aleatorios (dominio: ${DOMAIN})"
 fi
 
+# IP pública desde el servicio de metadatos de Azure, para permitir también el acceso por http://<IP>.
+if ! grep -q '^PUBLIC_IP=' .env; then
+  IP=$(curl -s -m 5 -H Metadata:true "http://169.254.169.254/metadata/instance/network/interface/0/ipv4/ipAddress/0/publicIpAddress?api-version=2021-02-01&format=text" || true)
+  if [ -n "$IP" ]; then echo "PUBLIC_IP=$IP" >> .env; echo "Acceso por IP habilitado: http://$IP"; fi
+fi
+
 # El contenedor nginx de prueba ocupa el puerto 80.
 if sudo docker ps -a --format '{{.Names}}' | grep -qx prueba; then
   echo "Deteniendo el contenedor de prueba 'prueba' (nginx) para liberar el puerto 80"
