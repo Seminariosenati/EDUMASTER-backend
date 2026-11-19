@@ -54,8 +54,11 @@ $api = "$Base\edumaster-backend\apps\api"
 $venv = "$Base\venv"
 $venvOk = $false
 if (Test-Path "$venv\Scripts\python.exe") {
-  & "$venv\Scripts\python.exe" -c "import sys" 2>$null
-  $venvOk = $LASTEXITCODE -eq 0
+  # En Windows PowerShell, stderr redirigido con ErrorActionPreference=Stop corta el script.
+  $ErrorActionPreference = "Continue"
+  $out = & "$venv\Scripts\python.exe" -c "import encodings, sys; print('ok')" 2>&1
+  $venvOk = ($LASTEXITCODE -eq 0) -and ("$out".Trim() -eq "ok")
+  $ErrorActionPreference = "Stop"
 }
 if (-not $venvOk) {
   Stop-ScheduledTask -TaskName "EduMasterAPI" -ErrorAction SilentlyContinue
