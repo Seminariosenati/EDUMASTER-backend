@@ -27,11 +27,36 @@ function Install-IfMissing($command, $url, $file, $installArgs, $exePath = $null
   Refresh-Path
 }
 
-# Se detecta por ruta fija: reejecutar el instalador sobre una instalación existente la desinstala.
+function Test-Python($exe) {
+  if (-not (Test-Path $exe)) { return $false }
+  # En Windows PowerShell, stderr redirigido con ErrorActionPreference=Stop corta el script.
+  $ErrorActionPreference = "Continue"
+  $out = & $exe -c "import encodings, venv, sys; print('ok')" 2>&1
+  $ok = ($LASTEXITCODE -eq 0) -and ("$out".Trim() -eq "ok")
+  $ErrorActionPreference = "Stop"
+  return $ok
+}
+
+# Se valida que Python funcione de verdad: un python.exe sin su carpeta Lib parece instalado pero no arranca.
 $py = "C:\Program Files\Python313\python.exe"
+$pyInstaller = Join-Path $env:TEMP "python-3.13.1-amd64.exe"
 Refresh-Path
-Install-IfMissing "python" "https://www.python.org/ftp/python/3.13.1/python-3.13.1-amd64.exe" "python-3.13.1-amd64.exe" "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" $py
-if (-not (Test-Path $py)) { throw "Python no quedó instalado en $py" }
+if (-not (Test-Python $py)) {
+  Stop-ScheduledTask -TaskName "EduMasterAPI" -ErrorAction SilentlyContinue
+  Write-Host "Python ausente o dañado: instalación limpia de Python 3.13.1 ..."
+  Invoke-WebRequest -Uri "https://www.python.org/ftp/python/3.13.1/python-3.13.1-amd64.exe" -OutFile $pyInstaller -UseBasicParsing
+  if (Test-Path $py) {
+    Start-Process $pyInstaller -ArgumentList "/quiet /uninstall" -Wait
+    Remove-Item -Recurse -Force "C:\Program Files\Python313" -ErrorAction SilentlyContinue
+  }
+  Start-Process $pyInstaller -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
+  if (-not (Test-Python $py)) {
+    # Si el registro aún cree que está instalado, la instalación anterior no hace nada; se fuerza una reparación.
+    Start-Process $pyInstaller -ArgumentList "/quiet /repair" -Wait
+  }
+  Refresh-Path
+  if (-not (Test-Python $py)) { throw "Python no funciona después de reinstalarlo; revisar $py" }
+} else { Write-Host "python ya instalado" }
 Install-IfMissing "node" "https://nodejs.org/dist/v22.12.0/node-v22.12.0-x64.msi" "node-v22.12.0-x64.msi" ""
 Install-IfMissing "git" "https://github.com/git-for-windows/git/releases/download/v2.47.1.windows.1/Git-2.47.1-64-bit.exe" "Git-2.47.1-64-bit.exe" "/VERYSILENT /NORESTART"
 Refresh-Path
@@ -52,18 +77,12 @@ foreach ($pair in @(@("edumaster-backend", $BackendRepo), @("edumaster-frontend"
 
 $api = "$Base\edumaster-backend\apps\api"
 $venv = "$Base\venv"
-$venvOk = $false
-if (Test-Path "$venv\Scripts\python.exe") {
-  # En Windows PowerShell, stderr redirigido con ErrorActionPreference=Stop corta el script.
-  $ErrorActionPreference = "Continue"
-  $out = & "$venv\Scripts\python.exe" -c "import encodings, sys; print('ok')" 2>&1
-  $venvOk = ($LASTEXITCODE -eq 0) -and ("$out".Trim() -eq "ok")
-  $ErrorActionPreference = "Stop"
-}
+$venvOk = Test-Python "$venv\Scripts\python.exe"
 if (-not $venvOk) {
   Stop-ScheduledTask -TaskName "EduMasterAPI" -ErrorAction SilentlyContinue
   if (Test-Path $venv) { Remove-Item -Recurse -Force $venv }
   & $py -m venv $venv
+  if (-not (Test-Python "$venv\Scripts\python.exe")) { throw "No se pudo crear el entorno virtual en $venv" }
 }
 & "$venv\Scripts\python.exe" -m pip install --upgrade pip
 & "$venv\Scripts\pip.exe" install torch==2.15.0 --index-url https://download.pytorch.org/whl/cpu
