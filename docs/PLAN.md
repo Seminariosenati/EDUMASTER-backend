@@ -19,7 +19,10 @@ dos semanas se construye un MVP **funcional de punta a punta** que cubre los tre
 | 4.3 Cursos (crear, publicar, archivar, matricular) | Hecho | Cursos |
 | 4.4 Analítica con filtros y exportación CSV auditada | Hecho | Análisis |
 | 4.5 / 4.11 Recomendaciones con explicación y feedback | Hecho | Recomendaciones |
+| Recomendaciones que actúan al aceptarse (matrícula, notificación), expiración a 14 días y métricas de aceptación/utilidad | Hecho | Recomendaciones |
+| Filtros globales del Resumen por curso, cohorte y periodo | Hecho | Resumen |
 | 4.6 Evaluaciones, nota oficial separada de la estimación IA | Hecho | Curso → Calificar |
+| 4.6 Banco de preguntas y evaluación respondida por el estudiante con corrección automática | Hecho | Evaluaciones |
 | 4.7 Certificados: folio, QR, verificación pública, anulación | Hecho | Certificados, `/verificar` |
 | 4.9 Skill mastery: validado frente a estimado por IA | Hecho | Análisis → Dominio |
 | 4.10 Arquitectura neuronal animada con estados reales | Hecho | Resumen, IA · Red neuronal |

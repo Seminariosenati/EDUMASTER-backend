@@ -16,10 +16,11 @@ from app.core.resources import resource_publisher
 from app.db import models
 from app.db.seed import seed_demo
 from app.db.session import Base, SessionLocal, engine
-from app.modules import (academic, analytics, certificates, governance, identity, ml, realtime, recommendations,
-                         tracking)
+from app.modules import (academic, analytics, certificates, evaluations, governance, identity, ml, realtime,
+                         recommendations, tracking)
 from app.services import ml as ml_service
 from app.services.live import live_inference_loop
+from app.services.question_bank import ensure_question_bank
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("edumaster")
@@ -35,6 +36,10 @@ def _bootstrap() -> None:
         if org:
             log.info("Entorno DEMO cargado (%s)", org.name)
         demo = db.scalar(select(models.Organization).where(models.Organization.code == "DEMO"))
+        if demo:
+            created = ensure_question_bank(db, demo.id)
+            if created:
+                log.info("Banco de preguntas DEMO: %s preguntas", created)
         has_model = demo and db.scalar(select(models.ModelVersion.id).where(
             models.ModelVersion.organization_id == demo.id).limit(1))
         if demo and not has_model and settings.auto_train_on_seed:
@@ -94,7 +99,7 @@ async def unhandled(request: Request, exc: Exception):
 
 
 API = "/api/v1"
-for module in (identity, academic, tracking, analytics, recommendations, certificates, ml, governance, realtime):
+for module in (identity, academic, evaluations, tracking, analytics, recommendations, certificates, ml, governance, realtime):
     app.include_router(module.router, prefix=API)
 
 

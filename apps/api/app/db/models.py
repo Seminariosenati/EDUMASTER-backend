@@ -335,3 +335,31 @@ class OutboxEvent(Base):
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
     dispatched_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True, index=True)
+
+
+class Question(Base):
+    __tablename__ = "questions"
+    id: Mapped[str] = pk()
+    organization_id: Mapped[str] = org_fk()
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("assessments.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=1)
+    type: Mapped[str] = mapped_column(String(30))
+    prompt: Mapped[str] = mapped_column(Text)
+    options: Mapped[list] = mapped_column(JSON, default=list)
+    answer: Mapped[dict] = mapped_column(JSON, default=dict)
+    points: Mapped[float] = mapped_column(Float, default=1)
+    explanation: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AttemptSubmission(Base):
+    """Respuestas del estudiante a una evaluación autocorregida; la nota oficial queda en assessment_attempts."""
+
+    __tablename__ = "attempt_submissions"
+    id: Mapped[str] = pk()
+    organization_id: Mapped[str] = org_fk()
+    attempt_id: Mapped[str] = mapped_column(ForeignKey("assessment_attempts.id"), unique=True)
+    answers: Mapped[dict] = mapped_column(JSON, default=dict)
+    detail: Mapped[list] = mapped_column(JSON, default=list)
+    submitted_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

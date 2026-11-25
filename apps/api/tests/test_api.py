@@ -179,3 +179,62 @@ def test_live_inference_event(client, tokens):
     assert "estudiante" not in p["audience_roles"]
     assert 0 <= p["completion_probability"] <= 1 and p["student_code"].startswith("DEMO-")
     assert {"entrada", "fusion"} <= set(p["activations"])
+
+
+def test_evaluation_bank_submit_and_grade(client, tokens):
+    st, doc = auth(tokens["estudiante"]), auth(tokens["docente"])
+    evals = client.get(f"{API}/evaluations", headers=st).json()
+    target = next(e for e in evals if e["questions"] > 0)
+    detail = client.get(f"{API}/evaluations/{target['id']}", headers=st).json()
+    assert all("answer" not in q for q in detail["questions"])
+    incomplete = client.post(f"{API}/evaluations/{target['id']}/submit", headers=st, json={"answers": {}})
+    assert incomplete.status_code == 422
+    answers = {q["id"]: (0 if q["options"] else "respuesta") for q in detail["questions"]}
+    if detail["remaining_attempts"] == 0:
+        assert client.post(f"{API}/evaluations/{target['id']}/submit", headers=st, json={"answers": answers}).status_code == 409
+        return
+    r = client.post(f"{API}/evaluations/{target['id']}/submit", headers=st, json={"answers": answers})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert 0 <= body["score"] <= 100 and body["total"] == len(detail["questions"])
+    assert all("expected" in d for d in body["detail"])
+    assert client.post(f"{API}/evaluations/{target['id']}/questions", headers=st,
+                       json={"type": "verdadero_falso", "prompt": "Pregunta de prueba", "correct": 0}).status_code == 403
+
+
+def test_teacher_manages_question_bank(client, tokens):
+    doc = auth(tokens["docente"])
+    ev = client.get(f"{API}/evaluations", headers=doc).json()[0]
+    bad = client.post(f"{API}/evaluations/{ev['id']}/questions", headers=doc,
+                      json={"type": "opcion_multiple", "prompt": "¿Cuál es correcta?", "options": ["A"], "correct": 0})
+    assert bad.status_code == 422
+    q = client.post(f"{API}/evaluations/{ev['id']}/questions", headers=doc, json={
+        "type": "respuesta_corta", "prompt": "¿Qué comando lista archivos?", "accepted": ["ls"]}).json()
+    staff_view = client.get(f"{API}/evaluations/{ev['id']}", headers=doc).json()
+    assert any(x["id"] == q["id"] and x["answer"]["accepted"] == ["ls"] for x in staff_view["questions"])
+    assert client.delete(f"{API}/evaluations/questions/{q['id']}", headers=doc).status_code == 204
+
+
+def test_accepting_route_recommendation_enrolls_student(client, tokens):
+    admin = auth(tokens["admin"])
+    client.post(f"{API}/recommendations/generate", headers=admin, json={})
+    recs = client.get(f"{API}/recommendations?status=nueva&limit=200", headers=admin).json()
+    ruta = next((r for r in recs if r["type"] == "ruta"), None)
+    if ruta:
+        res = client.post(f"{API}/recommendations/{ruta['id']}/feedback", headers=admin, json={"status": "aceptada"}).json()
+        assert res["status"] == "aceptada" and ("matricul" in res["action"] or "matrícula" in res["action"])
+        progress = client.get(f"{API}/students/{ruta['student']['id']}/progress", headers=admin).json()
+        assert any(c["course_id"] == ruta["course"]["id"] for c in progress["courses"])
+    m = client.get(f"{API}/recommendations/metrics", headers=admin).json()
+    assert m["total"] > 0 and "tasa_aceptacion" in m and set(m["por_tipo"]) == {"acompanamiento", "completar", "ruta", "refuerzo"}
+    assert client.get(f"{API}/recommendations/metrics", headers=auth(tokens["estudiante"])).status_code == 403
+
+
+def test_dashboard_filters_by_course(client, tokens):
+    admin = auth(tokens["admin"])
+    course = client.get(f"{API}/courses?limit=1", headers=admin).json()["items"][0]
+    allc = client.get(f"{API}/analytics/completion", headers=admin).json()["total"]
+    one = client.get(f"{API}/analytics/completion?course_id={course['id']}", headers=admin).json()["total"]
+    assert 0 < one < allc
+    s = client.get(f"{API}/dashboard/summary?course_id={course['id']}&cohort=2026-A&days=90", headers=admin)
+    assert s.status_code == 200 and s.json()["period_days"] == 90
