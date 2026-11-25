@@ -30,12 +30,16 @@ def _out(db: Session, r: Recommendation) -> dict:
     course = db.get(Course, r.course_id) if r.course_id else None
     skill = db.get(Skill, r.skill_id) if r.skill_id else None
     student = db.get(Student, r.student_id)
+    enrolled = None
+    if r.type == "ruta" and course:
+        enrolled = db.scalar(select(Enrollment.id).where(Enrollment.student_id == student.id,
+                                                         Enrollment.course_id == course.id)) is not None
     return {"id": r.id, "type": r.type, "title": r.title, "rationale": r.rationale, "impact": r.impact,
             "score": r.score, "status": r.status, "useful": r.useful, "created_at": r.created_at,
             "student": {"id": student.id, "full_name": student.full_name},
             "course": {"id": course.id, "title": course.title} if course else None,
             "skill": {"id": skill.id, "name": skill.name} if skill else None,
-            "model_version_id": r.model_version_id}
+            "enrolled": enrolled, "model_version_id": r.model_version_id}
 
 
 @router.get("/recommendations")
@@ -71,7 +75,8 @@ def feedback(rec_id: str, body: FeedbackIn, user: Principal = Depends(current_us
     if body.status:
         if rec.status == "expirada" and body.status == "aceptada":
             raise HTTPException(status.HTTP_409_CONFLICT, "La recomendación expiró; genera una nueva con el modelo vigente")
-        if body.status == "aceptada" and rec.status == "nueva":
+        own_route = user.role == STUDENT and rec.type == "ruta" and rec.status == "aceptada"
+        if body.status == "aceptada" and (rec.status == "nueva" or own_route):
             action = apply_action(db, rec, user)
         rec.status = body.status
     if body.useful is not None:
@@ -101,15 +106,25 @@ def apply_action(db: Session, rec: Recommendation, user: Principal) -> str:
             return f"{student.full_name} ya tenía matrícula en {course.title}"
         if course.status != "publicado":
             return f"{course.title} no está publicado; no se matriculó"
+        # Solo el propio estudiante decide inscribirse; el personal únicamente se lo recomienda.
+        if user.role != STUDENT:
+            if not student.user_id:
+                return (f"Recomendación registrada para {student.full_name}; no tiene cuenta de acceso para recibirla "
+                        "ni inscribirse")
+            _notify(db, rec, student.user_id, f"Te recomiendan el curso {course.title}",
+                    "Revisa la recomendación en EduMaster y decide si quieres inscribirte.")
+            return f"Se recomendó {course.title} a {student.full_name}; el estudiante decide si se inscribe"
         enr = Enrollment(organization_id=rec.organization_id, student_id=student.id, course_id=course.id)
         db.add(enr)
         db.flush()
         emit(db, rec.organization_id, "learning.progress.updated",
              {"student_id": student.id, "course_id": course.id, "enrollment_id": enr.id, "event_type": "enrolled",
               "progress": 0}, aggregate_id=enr.id)
-        if student.user_id:
-            _notify(db, rec, student.user_id, f"Te matriculamos en {course.title}", rec.rationale)
-        return f"Se matriculó a {student.full_name} en {course.title}"
+        reviewer = db.scalar(select(Course.instructor_id).where(Course.id == course.id))
+        if reviewer:
+            _notify(db, rec, reviewer, f"{student.full_name} se inscribió en {course.title}",
+                    "Inscripción aceptada por el estudiante a partir de una recomendación de la IA.")
+        return f"Te inscribiste en {course.title}"
     if rec.type == "acompanamiento":
         if course and course.instructor_id and course.instructor_id != user.user_id:
             _notify(db, rec, course.instructor_id, f"Acompañar a {student.full_name}", rec.rationale)

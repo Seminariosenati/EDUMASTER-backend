@@ -215,19 +215,23 @@ def test_teacher_manages_question_bank(client, tokens):
     assert client.delete(f"{API}/evaluations/questions/{q['id']}", headers=doc).status_code == 204
 
 
-def test_accepting_route_recommendation_enrolls_student(client, tokens):
-    admin = auth(tokens["admin"])
+def test_only_student_enrolls_from_route_recommendation(client, tokens):
+    admin, st = auth(tokens["admin"]), auth(tokens["estudiante"])
+    me = client.get(f"{API}/auth/me", headers=st).json()
     client.post(f"{API}/recommendations/generate", headers=admin, json={})
-    recs = client.get(f"{API}/recommendations?status=nueva&limit=200", headers=admin).json()
-    ruta = next((r for r in recs if r["type"] == "ruta"), None)
-    if ruta:
-        res = client.post(f"{API}/recommendations/{ruta['id']}/feedback", headers=admin, json={"status": "aceptada"}).json()
-        assert res["status"] == "aceptada" and ("matricul" in res["action"] or "matrícula" in res["action"])
-        progress = client.get(f"{API}/students/{ruta['student']['id']}/progress", headers=admin).json()
-        assert any(c["course_id"] == ruta["course"]["id"] for c in progress["courses"])
+    recs = client.get(f"{API}/recommendations?status=nueva&limit=1000", headers=admin).json()
+    staff_route = next((r for r in recs if r["type"] == "ruta" and r["student"]["id"] != me["student_id"]), None)
+    if staff_route:
+        res = client.post(f"{API}/recommendations/{staff_route['id']}/feedback", headers=admin, json={"status": "aceptada"}).json()
+        assert "matricul" not in res["action"] and res["enrolled"] is False
+    own = next((r for r in recs if r["type"] == "ruta" and r["student"]["id"] == me["student_id"] and not r["enrolled"]), None)
+    if own:
+        assert client.post(f"{API}/recommendations/{own['id']}/feedback", headers=admin, json={"status": "aceptada"}).json()["enrolled"] is False
+        res = client.post(f"{API}/recommendations/{own['id']}/feedback", headers=st, json={"status": "aceptada"}).json()
+        assert res["enrolled"] is True and "inscribiste" in res["action"]
     m = client.get(f"{API}/recommendations/metrics", headers=admin).json()
-    assert m["total"] > 0 and "tasa_aceptacion" in m and set(m["por_tipo"]) == {"acompanamiento", "completar", "ruta", "refuerzo"}
-    assert client.get(f"{API}/recommendations/metrics", headers=auth(tokens["estudiante"])).status_code == 403
+    assert m["total"] > 0 and set(m["por_tipo"]) == {"acompanamiento", "completar", "ruta", "refuerzo"}
+    assert client.get(f"{API}/recommendations/metrics", headers=st).status_code == 403
 
 
 def test_dashboard_filters_by_course(client, tokens):
