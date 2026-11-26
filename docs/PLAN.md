@@ -21,6 +21,9 @@ dos semanas se construye un MVP **funcional de punta a punta** que cubre los tre
 | 4.5 / 4.11 Recomendaciones con explicación y feedback | Hecho | Recomendaciones |
 | Recomendaciones que actúan al aceptarse (matrícula, notificación), expiración a 14 días y métricas de aceptación/utilidad | Hecho | Recomendaciones |
 | Filtros globales del Resumen por curso, cohorte y periodo | Hecho | Resumen |
+| 4.5 IA Tutor: respuestas adaptadas al nivel estimado por la red, errores del estudiante y búsqueda TF-IDF en el material del curso; vista de dudas para el docente | Hecho | IA Tutor |
+| 4.8 Comunidad por curso: anuncios, debates, comentarios, moderación (fijar/ocultar), reportes, filtro de lenguaje y silenciar avisos | Hecho | Comunidad |
+| Mensajería directa 1 a 1 en tiempo real (SSE dirigido por usuario), no leídos y "visto" | Hecho | Mensajes |
 | 4.6 Evaluaciones, nota oficial separada de la estimación IA | Hecho | Curso → Calificar |
 | 4.6 Banco de preguntas y evaluación respondida por el estudiante con corrección automática | Hecho | Evaluaciones |
 | 4.7 Certificados: folio, QR, verificación pública, anulación | Hecho | Certificados, `/verificar` |
@@ -64,7 +67,6 @@ Regla del equipo: cada cambio entra por *pull request* con CI en verde (Definiti
 | MLflow + DVC | Registro propio en base de datos: versión, métricas, artefactos y checksum del dataset | Opcional: exportar runs a MLflow |
 | Alembic | `create_all` al iniciar | Migraciones versionadas (integrante 2) |
 | OpenTelemetry / Prometheus | `correlation_id` en cada respuesta, health check y monitor de recursos | Exportar métricas a Prometheus |
-| Comunidad (foros) | No incluido | Fuera de alcance si no hay tiempo |
 | Lecciones editables | El curso cuenta actividades; no hay editor de contenidos | Editor básico de unidades |
 | Ingresos (imagen de referencia) | Excluido: pagos fuera de alcance; se usan métricas académicas | — |
 

@@ -363,3 +363,89 @@ class AttemptSubmission(Base):
     answers: Mapped[dict] = mapped_column(JSON, default=dict)
     detail: Mapped[list] = mapped_column(JSON, default=list)
     submitted_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class TutorMessage(Base):
+    __tablename__ = "tutor_messages"
+    __table_args__ = (Index("ix_tutor_student_time", "student_id", "created_at"),)
+    id: Mapped[str] = pk()
+    organization_id: Mapped[str] = org_fk()
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"))
+    course_id: Mapped[str | None] = mapped_column(ForeignKey("courses.id"), nullable=True, index=True)
+    role: Mapped[str] = mapped_column(String(10))
+    content: Mapped[str] = mapped_column(Text)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class CommunityPost(Base):
+    __tablename__ = "community_posts"
+    __table_args__ = (Index("ix_post_course_time", "course_id", "created_at"),)
+    id: Mapped[str] = pk()
+    organization_id: Mapped[str] = org_fk()
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id"))
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    kind: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(200))
+    body: Mapped[str] = mapped_column(Text)
+    pinned: Mapped[bool] = mapped_column(Boolean, default=False)
+    status: Mapped[str] = mapped_column(String(20), default="visible")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class CommunityComment(Base):
+    __tablename__ = "community_comments"
+    id: Mapped[str] = pk()
+    organization_id: Mapped[str] = org_fk()
+    post_id: Mapped[str] = mapped_column(ForeignKey("community_posts.id"), index=True)
+    author_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), default="visible")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class CommunityReport(Base):
+    __tablename__ = "community_reports"
+    id: Mapped[str] = pk()
+    organization_id: Mapped[str] = org_fk()
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id"), index=True)
+    target_type: Mapped[str] = mapped_column(String(10))
+    target_id: Mapped[str] = mapped_column(String(36))
+    reporter_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reason: Mapped[str] = mapped_column(String(300))
+    status: Mapped[str] = mapped_column(String(20), default="abierto")
+    resolution: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class CommunityMute(Base):
+    __tablename__ = "community_mutes"
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True)
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id"), primary_key=True)
+
+
+class Conversation(Base):
+    __tablename__ = "conversations"
+    id: Mapped[str] = pk()
+    organization_id: Mapped[str] = org_fk()
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    last_message_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+
+
+class ConversationMember(Base):
+    __tablename__ = "conversation_members"
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"), primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), primary_key=True, index=True)
+    last_read_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+
+class DirectMessage(Base):
+    __tablename__ = "direct_messages"
+    __table_args__ = (Index("ix_dm_conv_time", "conversation_id", "created_at"),)
+    id: Mapped[str] = pk()
+    organization_id: Mapped[str] = org_fk()
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id"))
+    sender_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    body: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

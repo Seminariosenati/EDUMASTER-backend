@@ -242,3 +242,80 @@ def test_dashboard_filters_by_course(client, tokens):
     assert 0 < one < allc
     s = client.get(f"{API}/dashboard/summary?course_id={course['id']}&cohort=2026-A&days=90", headers=admin)
     assert s.status_code == 200 and s.json()["period_days"] == 90
+
+
+def test_tutor_answers_with_course_material_and_model(client, tokens):
+    st = auth(tokens["estudiante"])
+    ctx = client.get(f"{API}/tutor/context", headers=st).json()
+    assert ctx and {"mastery_level", "skill_to_reinforce"} <= set(ctx[0])
+    course = next(c for c in ctx if c["status"] != "completado") if any(c["status"] != "completado" for c in ctx) else ctx[0]
+    r = client.post(f"{API}/tutor/ask", headers=st, json={"course_id": course["course_id"], "message": "¿Qué debo reforzar?"})
+    assert r.status_code == 201, r.text
+    ans = r.json()["answer"]
+    assert ans["role"] == "tutor" and any(s["title"] == "Tu siguiente paso" for s in ans["payload"]["sections"])
+    q = client.post(f"{API}/tutor/ask", headers=st, json={"message": "¿qué es el sobreajuste en machine learning?"}).json()
+    assert q["answer"]["content"]
+    assert len(client.get(f"{API}/tutor/history", headers=st).json()) >= 4
+    assert client.post(f"{API}/tutor/ask", headers=auth(tokens["admin"]), json={"message": "hola"}).status_code == 403
+    dudas = client.get(f"{API}/tutor/questions", headers=auth(tokens["admin"])).json()
+    assert any("reforzar" in d["question"] for d in dudas)
+
+
+def test_community_flow_permissions_and_moderation(client, tokens):
+    st, admin = auth(tokens["estudiante"]), auth(tokens["admin"])
+    spaces = client.get(f"{API}/community/spaces", headers=st).json()
+    assert spaces and all(s["role"] == "miembro" for s in spaces)
+    cid = spaces[0]["course_id"]
+    assert client.post(f"{API}/community/posts", headers=st, json={"course_id": cid, "kind": "anuncio", "title": "Hola", "body": "No permitido"}).status_code == 403
+    post = client.post(f"{API}/community/posts", headers=st, json={"course_id": cid, "kind": "debate", "title": "Duda sobre GRU", "body": "¿Cómo recuerda la secuencia?"}).json()
+    assert post["status"] == "visible"
+    c = client.post(f"{API}/community/posts/{post['id']}/comments", headers=admin, json={"body": "Usa compuertas de actualización y reinicio."})
+    assert c.status_code == 201
+    bad = client.post(f"{API}/community/posts/{post['id']}/comments", headers=st, json={"body": "eres un idiota"}).json()
+    assert bad["status"] == "en_revision" and bad["notice"]
+    reports = client.get(f"{API}/community/reports", headers=admin).json()
+    auto = next(r for r in reports if r["automatic"] and r["post_id"] == post["id"])
+    assert client.get(f"{API}/community/reports", headers=st).json() == []
+    assert client.post(f"{API}/community/reports/{auto['id']}/resolve", headers=admin, json={"action": "ocultar"}).json()["status"] == "resuelto"
+    detail = client.get(f"{API}/community/posts/{post['id']}", headers=st).json()
+    assert len([x for x in detail["comments"] if x["status"] == "visible"]) == 1
+    assert client.post(f"{API}/community/posts/{post['id']}/moderate", headers=st, json={"action": "fijar"}).status_code == 403
+    assert client.post(f"{API}/community/posts/{post['id']}/moderate", headers=admin, json={"action": "fijar"}).json()["pinned"] is True
+    assert client.post(f"{API}/community/spaces/{cid}/mute", headers=st, json={"muted": True}).json()["muted"] is True
+    other = client.get(f"{API}/community/spaces", headers=auth(tokens["admin_aliada"])).json()
+    assert all(s["course_id"] != cid for s in other)
+
+
+def test_direct_messages_between_classmates(client, tokens):
+    from app.modules import identity
+    identity._attempts.clear()
+    st = auth(tokens["estudiante"])
+    r = client.post(f"{API}/auth/login", json={"email": "estudiante2@edumaster.demo", "password": "Demo2026!"})
+    assert r.status_code == 200, "falta la cuenta DEMO del compañero"
+    mate = auth(r.json()["access_token"])
+    mate_id = r.json()["user"]["id"]
+    contacts = client.get(f"{API}/messages/contacts", headers=st).json()
+    assert any(c["id"] == mate_id and c["context"].startswith("Compañero") for c in contacts)
+    conv = client.post(f"{API}/messages/conversations", headers=st, json={"user_id": mate_id}).json()
+    again = client.post(f"{API}/messages/conversations", headers=st, json={"user_id": mate_id}).json()
+    assert conv["id"] == again["id"]
+    sent = client.post(f"{API}/messages/conversations/{conv['id']}/messages", headers=st, json={"body": "¡Hola! ¿Repasamos?"})
+    assert sent.status_code == 201
+    assert client.get(f"{API}/messages/unread", headers=mate).json()["unread"] >= 1
+    thread = client.get(f"{API}/messages/conversations/{conv['id']}", headers=mate).json()
+    assert thread["messages"][-1]["body"] == "¡Hola! ¿Repasamos?"
+    client.post(f"{API}/messages/conversations/{conv['id']}/read", headers=mate)
+    assert client.get(f"{API}/messages/unread", headers=mate).json()["unread"] == 0
+    assert client.get(f"{API}/messages/conversations/{conv['id']}", headers=auth(tokens["admin_aliada"])).status_code == 404
+    outsider = client.get(f"{API}/users", headers=auth(tokens["admin"])).json()
+    ml_user = next(u for u in outsider if u["role"] == "ml_engineer")
+    assert client.post(f"{API}/messages/conversations", headers=st, json={"user_id": ml_user["id"]}).status_code == 403
+
+
+def test_private_events_reach_only_recipients():
+    from app.core.events import Subscriber
+    import asyncio
+    a = Subscriber(queue=asyncio.Queue(), organization_id="o", role="estudiante", student_id="s1", user_id="u1")
+    b = Subscriber(queue=asyncio.Queue(), organization_id="o", role="admin", student_id=None, user_id="u2")
+    ev = {"organization_id": "o", "payload": {"user_ids": ["u1"], "conversation_id": "c"}}
+    assert a.accepts(ev) and not b.accepts(ev)

@@ -24,7 +24,8 @@ async def stream(request: Request, token: str | None = Query(default=None)):
         user = principal_from_token(raw, db)
         allowed = visible_course_ids(db, user)
     sub = Subscriber(queue=asyncio.Queue(maxsize=500), organization_id=user.organization_id, role=user.role,
-                     student_id=user.student_id, course_ids=set(allowed) if allowed is not None else None)
+                     student_id=user.student_id, course_ids=set(allowed) if allowed is not None else None,
+                     user_id=user.user_id)
     bus.subscribe(sub)
 
     async def gen():

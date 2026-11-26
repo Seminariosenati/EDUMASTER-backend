@@ -40,11 +40,15 @@ class Subscriber:
     role: str
     student_id: str | None
     course_ids: set[str] | None = field(default=None)
+    user_id: str | None = None
 
     def accepts(self, event: dict) -> bool:
         if event["organization_id"] != self.organization_id:
             return False
         p = event.get("payload", {})
+        # Eventos privados (mensajes directos): solo para los usuarios indicados.
+        if "user_ids" in p:
+            return self.user_id in p["user_ids"]
         if self.student_id is not None and p.get("student_id") and p["student_id"] != self.student_id:
             return False
         if self.course_ids is not None and p.get("course_id") and p["course_id"] not in self.course_ids:

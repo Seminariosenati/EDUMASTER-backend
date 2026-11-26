@@ -75,7 +75,8 @@ La API queda en http://127.0.0.1:8000/api/docs. En el repo del frontend: `npm in
 (abre http://localhost:5173 con proxy a la API).
 
 Cuentas DEMO (contraseña `Demo2026!`): `admin@`, `coordinador@`, `docente@`, `estudiante@`, `analista@`,
-`ml@`, `auditor@`, `superadmin@` + `edumaster.demo`. Otra institución aislada: `admin@aliada.demo`.
+`ml@`, `auditor@`, `superadmin@` + `edumaster.demo`. Compañeros de la estudiante DEMO (para Comunidad y Mensajes):
+`estudiante2@`, `estudiante3@`, `estudiante4@` + `edumaster.demo`. Otra institución aislada: `admin@aliada.demo`.
 
 ## Pruebas
 
