@@ -17,7 +17,7 @@ from app.db import models
 from app.db.seed import seed_demo
 from app.db.session import Base, SessionLocal, engine
 from app.modules import (academic, analytics, certificates, community, evaluations, governance, identity, messaging,
-                         ml, realtime, recommendations, tracking, tutor)
+                         ml, paths, realtime, recommendations, tracking, tutor)
 from app.services import ml as ml_service
 from app.services.live import live_inference_loop
 from app.services.question_bank import ensure_question_bank
@@ -43,6 +43,8 @@ def _bootstrap() -> None:
             accounts = messaging.ensure_demo_students(db, demo.id)
             if accounts:
                 log.info("Cuentas DEMO de compañeros: %s", accounts)
+            if paths.ensure_paths_demo(db, demo.id):
+                log.info("Ruta DEMO completada con reglas y asignación")
             posts = community.ensure_community_demo(db, demo.id)
             if posts:
                 log.info("Comunidad DEMO: %s publicaciones", posts)
@@ -105,7 +107,7 @@ async def unhandled(request: Request, exc: Exception):
 
 
 API = "/api/v1"
-for module in (identity, academic, evaluations, tutor, community, messaging, tracking, analytics, recommendations,
+for module in (identity, academic, paths, evaluations, tutor, community, messaging, tracking, analytics, recommendations,
                certificates, ml, governance, realtime):
     app.include_router(module.router, prefix=API)
 

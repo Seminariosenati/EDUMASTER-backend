@@ -9,8 +9,8 @@ from app.core.audit import audit
 from app.core.events import emit
 from app.core.security import (ADMIN, COORDINATOR, INSTRUCTOR, MANAGERS, STAFF, STUDENT, SUPERADMIN, Principal,
                                current_user, require, visible_course_ids)
-from app.db.models import (Assessment, AssessmentAttempt, Course, CourseSkill, Enrollment, LearningPath,
-                           LearningPathStep, Skill, Student, User)
+from app.db.models import (Assessment, AssessmentAttempt, Course, CourseSkill, Enrollment,
+                           Skill, Student, User)
 from app.db.session import get_db
 from app.services import academic
 
@@ -55,12 +55,6 @@ class GradeIn(BaseModel):
 class EnrollIn(BaseModel):
     student_id: str
     course_id: str
-
-
-class PathIn(BaseModel):
-    title: str = Field(min_length=3, max_length=200)
-    objective: str = ""
-    course_ids: list[str] = Field(min_length=1)
 
 
 def _course_or_404(db: Session, user: Principal, course_id: str) -> Course:
@@ -265,35 +259,3 @@ def list_skills(user: Principal = Depends(current_user), db: Session = Depends(g
             for s in db.scalars(select(Skill).where(Skill.organization_id == user.organization_id).order_by(Skill.code))]
 
 
-@router.get("/learning-paths")
-def list_paths(user: Principal = Depends(current_user), db: Session = Depends(get_db)):
-    out = []
-    for p in db.scalars(select(LearningPath).where(LearningPath.organization_id == user.organization_id)):
-        steps = []
-        for s in p.steps:
-            c = db.get(Course, s.course_id)
-            step = {"position": s.position, "course_id": c.id, "code": c.code, "title": c.title, "level": c.level}
-            if user.student_id:
-                enr = db.scalar(select(Enrollment).where(Enrollment.course_id == c.id,
-                                                         Enrollment.student_id == user.student_id))
-                step["my_status"] = enr.status if enr else "pendiente"
-                step["my_progress"] = enr.progress if enr else 0
-            steps.append(step)
-        out.append({"id": p.id, "title": p.title, "objective": p.objective, "status": p.status, "version": p.version,
-                    "steps": steps})
-    return out
-
-
-@router.post("/learning-paths", status_code=201)
-def create_path(body: PathIn, user: Principal = Depends(require(*MANAGERS, COORDINATOR)), db: Session = Depends(get_db)):
-    path = LearningPath(organization_id=user.organization_id, title=body.title, objective=body.objective)
-    for i, cid in enumerate(body.course_ids, start=1):
-        course = _course_or_404(db, user, cid)
-        if course.status != "publicado":
-            raise HTTPException(422, f"El curso {course.code} no está publicado")
-        path.steps.append(LearningPathStep(position=i, course_id=cid))
-    db.add(path)
-    db.flush()
-    audit(db, user, "crear_ruta", "learning_path", path.id, cursos=body.course_ids)
-    db.commit()
-    return {"id": path.id, "title": path.title}

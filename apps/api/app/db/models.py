@@ -449,3 +449,38 @@ class DirectMessage(Base):
     sender_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
     body: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class LearningPathStepRule(Base):
+    """Duración y criterio de logro de cada paso de una ruta (clave por posición: los pasos se recrean al editar)."""
+    __tablename__ = "learning_path_step_rules"
+    path_id: Mapped[str] = mapped_column(ForeignKey("learning_paths.id"), primary_key=True)
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    duration_weeks: Mapped[int] = mapped_column(Integer, default=4)
+    min_progress: Mapped[float] = mapped_column(Float, default=0.8)
+    criteria: Mapped[str] = mapped_column(Text, default="")
+
+
+class PathAssignment(Base):
+    __tablename__ = "learning_path_assignments"
+    __table_args__ = (UniqueConstraint("path_id", "student_id", name="uq_path_student"),)
+    id: Mapped[str] = pk()
+    organization_id: Mapped[str] = org_fk()
+    path_id: Mapped[str] = mapped_column(ForeignKey("learning_paths.id"), index=True)
+    student_id: Mapped[str] = mapped_column(ForeignKey("students.id"), index=True)
+    cohort: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    assigned_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="activa")
+    assigned_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class PathHistory(Base):
+    __tablename__ = "learning_path_history"
+    id: Mapped[str] = pk()
+    path_id: Mapped[str] = mapped_column(ForeignKey("learning_paths.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    action: Mapped[str] = mapped_column(String(30))
+    actor_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

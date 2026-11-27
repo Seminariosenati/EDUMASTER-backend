@@ -15,7 +15,7 @@ dos semanas se construye un MVP **funcional de punta a punta** que cubre los tre
 | 1. Dashboard con KPIs, fuente y fecha | Hecho | Resumen |
 | 2. Exclusiones (sin sanciones automáticas, sin biometría) | Respetadas | Model card, textos de la UI |
 | 3. Roles y permisos (8 roles, RBAC/ABAC en backend) | Hecho | Login con cada cuenta DEMO |
-| 4.2 Rutas de aprendizaje | Hecho (lectura + creación por API) | Planes de aprendizaje |
+| 4.2 Rutas de aprendizaje | Hecho: crear y editar con versiones, validar prerrequisitos, publicar, asignar a cohorte o estudiantes, avance por paso, desbloqueo e historial | Planes de aprendizaje |
 | 4.3 Cursos (crear, publicar, archivar, matricular) | Hecho | Cursos |
 | 4.4 Analítica con filtros y exportación CSV auditada | Hecho | Análisis |
 | 4.5 / 4.11 Recomendaciones con explicación y feedback | Hecho | Recomendaciones |

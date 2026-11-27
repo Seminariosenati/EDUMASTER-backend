@@ -319,3 +319,38 @@ def test_private_events_reach_only_recipients():
     b = Subscriber(queue=asyncio.Queue(), organization_id="o", role="admin", student_id=None, user_id="u2")
     ev = {"organization_id": "o", "payload": {"user_ids": ["u1"], "conversation_id": "c"}}
     assert a.accepts(ev) and not b.accepts(ev)
+
+
+def test_learning_path_lifecycle(client, tokens):
+    adm, st, doc = auth(tokens["admin"]), auth(tokens["estudiante"]), auth(tokens["docente"])
+    courses = {c["code"]: c for c in client.get(f"{API}/courses?limit=200", headers=adm).json()["items"]}
+    demo = client.get(f"{API}/learning-paths", headers=st).json()
+    assert demo[0]["assigned"] and "me" in demo[0], "la ruta DEMO debe estar asignada a la cohorte de la estudiante"
+    assert client.post(f"{API}/learning-paths", headers=st, json={"title": "X", "steps": []}).status_code in (403, 422)
+    # borrador con prerrequisito inconsistente: avanzado antes que básico
+    adv = next(c for c in courses.values() if c["level"] == "avanzado" and c["status"] == "publicado")
+    steps = [{"course_id": adv["id"]}, {"course_id": courses["PY101"]["id"], "duration_weeks": 3, "min_progress": 0.5}]
+    pid = client.post(f"{API}/learning-paths", headers=adm, json={"title": "Ruta prueba", "steps": steps}).json()["id"]
+    d = client.get(f"{API}/learning-paths/{pid}", headers=adm).json()
+    assert d["status"] == "borrador" and not d["validation"]["ok"]
+    assert client.post(f"{API}/learning-paths/{pid}/assignments", headers=adm, json={"cohort": "x"}).status_code == 409
+    r = client.post(f"{API}/learning-paths/{pid}/publish", headers=adm)
+    assert r.status_code == 422 and "Prerrequisito" in r.json()["message"]
+    # corrige el orden → nueva versión → publica
+    r = client.put(f"{API}/learning-paths/{pid}", headers=adm, json={"title": "Ruta prueba", "steps": steps[::-1]})
+    assert r.json()["version"] == 2
+    assert client.post(f"{API}/learning-paths/{pid}/publish", headers=adm).status_code == 200
+    # asigna al estudiante DEMO
+    me = client.get(f"{API}/auth/me", headers=st).json()
+    r = client.post(f"{API}/learning-paths/{pid}/assignments", headers=adm, json={"student_ids": [me["student_id"]]})
+    assert r.status_code == 201 and r.json()["added"] == 1
+    mine = next(p for p in client.get(f"{API}/learning-paths", headers=st).json() if p["id"] == pid)
+    states = [s["state"] for s in mine["me"]["steps"]]
+    assert states[1] in ("bloqueado", "completado")
+    if states[1] == "bloqueado" and states[0] != "completado":
+        assert client.post(f"{API}/learning-paths/{pid}/steps/2/start", headers=st).status_code == 409
+    detail = client.get(f"{API}/learning-paths/{pid}", headers=adm).json()
+    assert any(a["student_id"] == me["student_id"] for a in detail["assignments"])
+    assert [h["action"] for h in detail["history"]][:4] == ["asignar", "publicar", "editar", "crear"]
+    assert client.get(f"{API}/learning-paths/{pid}", headers=doc).status_code == 200
+    assert client.get(f"{API}/learning-paths/{pid}", headers=auth(tokens["admin_aliada"])).status_code == 404
